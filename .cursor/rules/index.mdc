@@ -1,11 +1,11 @@
 ---
-description: Only rule file Cursor auto-loads — index of Traceorb rules in saas-plano
+description: Only rule file Cursor auto-loads — index of Traceorb rules in obs-docs
 alwaysApply: true
 ---
 
 # Rule index (mandatory)
 
-`.cursor/rules/` and `.claude/rules/` contain **only this file**. Every other rule lives in `saas-plano`. Do not look for rules under these folders besides the index. Do not copy rules into `.ai-rules/`.
+`.cursor/rules/` and `.claude/rules/` contain **only this file**. Every other rule lives in `obs-docs`. Do not look for rules under these folders besides the index. Do not copy rules into `.ai-rules/`.
 
 The Cursor workspace is the parent folder `observability`. Read with that path. If this repo is open alone, prefix with `../`.
 
@@ -15,18 +15,18 @@ Before writing or changing code: **Read** the always-on files below. Then, if th
 
 | File | What it enforces |
 |------|------------------|
-| `saas-plano/05-architecture/dev/rules/code-style-rules.md` | Mappers, no comments, no ternary, no else |
-| `saas-plano/05-architecture/dev/rules/typing-rules.md` | Strict TS, no `any`, no `as`, closed Record |
-| `saas-plano/05-architecture/dev/rules/testing-rules.md` | Spec for new or changed behavior |
-| `saas-plano/05-architecture/dev/rules/commit-rules.md` | Conventional Commits; agent commits, person publishes |
-| `saas-plano/05-architecture/dev/rules/security-rules.md` | Fail-open, redact keys, write key only writes |
+| `obs-docs/05-architecture/dev/rules/code-style-rules.md` | Mappers, no comments, no ternary, no else |
+| `obs-docs/05-architecture/dev/rules/typing-rules.md` | Strict TS, no `any`, no `as`, closed Record |
+| `obs-docs/05-architecture/dev/rules/testing-rules.md` | Spec for new or changed behavior |
+| `obs-docs/05-architecture/dev/rules/commit-rules.md` | Conventional Commits; agent commits, person publishes |
+| `obs-docs/05-architecture/dev/rules/security-rules.md` | Fail-open, redact keys, write key only writes |
 
 ## On demand — Read only if the task matches
 
 | When you are… | Read |
 |---------------|------|
-| Touching batch, queue, payload cap or ingest shape | `saas-plano/05-architecture/dev/rules/performance-rules.md` |
-| Publishing the package or changing CI | `saas-plano/05-architecture/dev/rules/deployment-rules.md` |
-| Reading the ingest payload vs ClickHouse columns | `saas-plano/03-systems/clickhouse/overview.md` |
+| Touching batch, queue, payload cap or ingest shape | `obs-docs/05-architecture/dev/rules/performance-rules.md` |
+| Publishing the package or changing CI | `obs-docs/05-architecture/dev/rules/deployment-rules.md` |
+| Reading the ingest payload vs ClickHouse columns | `obs-docs/03-systems/clickhouse/overview.md` |
 
 If two on-demand rows match, Read both. If none match, stop after the always-on files.
