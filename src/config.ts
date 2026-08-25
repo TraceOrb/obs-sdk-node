@@ -18,6 +18,12 @@ const SENSITIVE_KEYS: Record<string, true> = {
   secret: true,
   api_key: true,
   apikey: true,
+  accesstoken: true,
+  refreshtoken: true,
+  idtoken: true,
+  access_token: true,
+  refresh_token: true,
+  id_token: true,
 };
 
 export const REDACT_HEADER_KEYS = SENSITIVE_KEYS;

@@ -35,6 +35,24 @@ describe('redact', () => {
     });
   });
 
+  test('redacts accessToken refreshToken and snake_case token keys in nested body', () => {
+    const body = redactBody({
+      value: {
+        accessToken: 'live-jwt',
+        refreshToken: 'live-refresh',
+        id_token: 'live-id',
+        nested: { access_token: 'x', ok: true },
+      },
+      extraKeys: [],
+    });
+    expect(body).toEqual({
+      accessToken: REDACTED,
+      refreshToken: REDACTED,
+      id_token: REDACTED,
+      nested: { access_token: REDACTED, ok: true },
+    });
+  });
+
   test('replaces extra keys in headers and bodies', () => {
     const headers = redactHeaders({
       headers: {
