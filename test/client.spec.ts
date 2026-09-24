@@ -120,4 +120,18 @@ describe('createClient', () => {
     expect(client.requestId()).toBeUndefined();
     client.close();
   });
+
+  test('rejects sampleRate outside 0..1', () => {
+    expect(() =>
+      createClient({
+        ingestUrl: 'http://obs.test/v1/ingest',
+        writeKey: 'ok_write_test_secret',
+        service: 'demo',
+        env: 'test',
+        flushIntervalMs: 0,
+        fetch: okFetch,
+        sampleRate: 1.5,
+      }),
+    ).toThrow();
+  });
 });

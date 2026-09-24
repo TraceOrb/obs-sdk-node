@@ -145,4 +145,66 @@ describe('ingestRequestFromCapture', () => {
     expect(request.durationMs).toBe(0);
     client.close();
   });
+
+  test('omits responseBodyJson when capture is errors and status is 200', () => {
+    const client = createClient({
+      ingestUrl: 'http://obs.test/v1/ingest',
+      writeKey: 'ok_write_test_secret',
+      service: 'demo',
+      env: 'test',
+      flushIntervalMs: 0,
+      fetch: okFetch,
+      capture: { responseBody: 'errors' },
+    });
+    const store = pastStore();
+    store.responseBody = { ok: true };
+    const request = ingestRequestFromCapture({
+      http: makeHttp({ statusCode: 200 }),
+      store,
+      client,
+    });
+    expect(request.responseBodyJson).toBeUndefined();
+    expect(request.requestBodyJson).toBeDefined();
+    client.close();
+  });
+
+  test('keeps responseBodyJson on 400 when capture is errors', () => {
+    const client = createClient({
+      ingestUrl: 'http://obs.test/v1/ingest',
+      writeKey: 'ok_write_test_secret',
+      service: 'demo',
+      env: 'test',
+      flushIntervalMs: 0,
+      fetch: okFetch,
+      capture: { responseBody: 'errors' },
+    });
+    const store = pastStore();
+    store.responseBody = { error: true };
+    const request = ingestRequestFromCapture({
+      http: makeHttp({ statusCode: 400 }),
+      store,
+      client,
+    });
+    expect(request.responseBodyJson).toBeDefined();
+    client.close();
+  });
+
+  test('omits requestBodyJson when capture is never', () => {
+    const client = createClient({
+      ingestUrl: 'http://obs.test/v1/ingest',
+      writeKey: 'ok_write_test_secret',
+      service: 'demo',
+      env: 'test',
+      flushIntervalMs: 0,
+      fetch: okFetch,
+      capture: { requestBody: 'never' },
+    });
+    const request = ingestRequestFromCapture({
+      http: makeHttp(),
+      store: pastStore(),
+      client,
+    });
+    expect(request.requestBodyJson).toBeUndefined();
+    client.close();
+  });
 });

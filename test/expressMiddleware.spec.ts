@@ -6,7 +6,8 @@ import { describe, expect, test } from 'vitest';
 import createClient from '../src/client';
 import { createStore, runWith } from '../src/context';
 import expressMiddleware from '../src/expressMiddleware';
-import type { IngestPayload } from '../src/types';
+import type { IngestPayload, IngestRequest } from '../src/types';
+import waitForCapture from './waitForCapture';
 
 function createRes(): Response {
   const emitter = new EventEmitter();
@@ -42,6 +43,49 @@ function createReq(): Request {
 }
 
 describe('expressMiddleware', () => {
+  test('emit finish returns before enqueue', async () => {
+    const bodies: IngestPayload[] = [];
+    const enqueued: IngestRequest[] = [];
+    async function captureFetch(
+      _url: string,
+      init: { body: string },
+    ): Promise<{ status: number }> {
+      bodies.push(JSON.parse(init.body) as IngestPayload);
+      return { status: 202 };
+    }
+
+    const client = createClient({
+      ingestUrl: 'http://obs.test/v1/ingest',
+      writeKey: 'ok_write_test_secret',
+      service: 'demo',
+      env: 'test',
+      flushIntervalMs: 0,
+      fetch: captureFetch,
+    });
+    const originalEnqueue = client.enqueue;
+    client.enqueue = function capture(request) {
+      enqueued.push(request);
+      originalEnqueue(request);
+    };
+    const middleware = expressMiddleware(client);
+    const req = createReq();
+    const res = createRes();
+
+    function noopNext(): void {
+      return;
+    }
+
+    middleware(req, res, noopNext);
+    res.emit('finish');
+    expect(enqueued).toHaveLength(0);
+    expect(bodies).toHaveLength(0);
+    await waitForCapture();
+    expect(enqueued).toHaveLength(1);
+    await client.flush();
+    expect(bodies).toHaveLength(1);
+    client.close();
+  });
+
   test('ingest down still calls next and finish does not throw', async () => {
     async function failingFetch(): Promise<{ status: number }> {
       throw new Error('down');
@@ -77,6 +121,7 @@ describe('expressMiddleware', () => {
     expect(() => {
       res.emit('finish');
     }).not.toThrow();
+    await waitForCapture();
 
     await expect(client.flush()).resolves.toBeUndefined();
     client.close();
@@ -117,6 +162,7 @@ describe('expressMiddleware', () => {
     middleware(req, res, noopNext);
     res.json({ ok: true });
     res.emit('finish');
+    await waitForCapture();
     await client.flush();
 
     expect(bodies).toHaveLength(1);
@@ -181,6 +227,7 @@ describe('expressMiddleware', () => {
 
     middleware(req, res, next);
     res.emit('finish');
+    await waitForCapture();
     await client.flush();
 
     const payload = JSON.parse(bodies[0] ?? '') as IngestPayload;
@@ -222,11 +269,51 @@ describe('expressMiddleware', () => {
 
     middleware(req, res, next);
     res.emit('finish');
+    await waitForCapture();
     await client.flush();
 
     expect(bodies[0]?.requests[0]?.events).toEqual([
       expect.objectContaining({ name: 'handler', seq: 0, level: 'info' }),
     ]);
+    client.close();
+  });
+
+  test('skip does not enqueue', async () => {
+    const bodies: IngestPayload[] = [];
+    async function captureFetch(
+      _url: string,
+      init: { body: string },
+    ): Promise<{ status: number }> {
+      bodies.push(JSON.parse(init.body) as IngestPayload);
+      return { status: 202 };
+    }
+
+    const client = createClient({
+      ingestUrl: 'http://obs.test/v1/ingest',
+      writeKey: 'ok_write_test_secret',
+      service: 'demo',
+      env: 'test',
+      flushIntervalMs: 0,
+      fetch: captureFetch,
+    });
+    const middleware = expressMiddleware(client, {
+      skip(req) {
+        return req.originalUrl === '/health';
+      },
+    });
+    const req = createReq();
+    req.originalUrl = '/health';
+    req.url = '/health';
+    req.route = { path: '/health' };
+    const res = createRes();
+    function noopNext(): void {
+      return;
+    }
+    middleware(req, res, noopNext);
+    res.emit('finish');
+    await waitForCapture();
+    await client.flush();
+    expect(bodies).toHaveLength(0);
     client.close();
   });
 });
@@ -269,6 +356,102 @@ describe('createClient', () => {
       client.step('inside');
     });
     expect(store.events).toHaveLength(1);
+    client.close();
+  });
+});
+
+describe('expressMiddleware sample and routes', () => {
+  test('sampleRate 0 drops 200 and keeps 500', async () => {
+    const bodies: IngestPayload[] = [];
+    async function captureFetch(
+      _url: string,
+      init: { body: string },
+    ): Promise<{ status: number }> {
+      bodies.push(JSON.parse(init.body) as IngestPayload);
+      return { status: 202 };
+    }
+
+    const client = createClient({
+      ingestUrl: 'http://obs.test/v1/ingest',
+      writeKey: 'ok_write_test_secret',
+      service: 'demo',
+      env: 'test',
+      flushIntervalMs: 0,
+      fetch: captureFetch,
+      sampleRate: 0,
+    });
+    const middleware = expressMiddleware(client);
+    const req = createReq();
+    const res = createRes();
+
+    function noopNext(): void {
+      return;
+    }
+
+    middleware(req, res, noopNext);
+    res.statusCode = 200;
+    res.emit('finish');
+    await waitForCapture();
+    await client.flush();
+    expect(bodies).toHaveLength(0);
+
+    const resError = createRes();
+    middleware(req, resError, noopNext);
+    resError.statusCode = 500;
+    resError.emit('finish');
+    await waitForCapture();
+    await client.flush();
+    expect(bodies).toHaveLength(1);
+    client.close();
+  });
+
+  test('route override sampleRate 1 enqueues while global 0 drops other routes', async () => {
+    const bodies: IngestPayload[] = [];
+    async function captureFetch(
+      _url: string,
+      init: { body: string },
+    ): Promise<{ status: number }> {
+      bodies.push(JSON.parse(init.body) as IngestPayload);
+      return { status: 202 };
+    }
+
+    const client = createClient({
+      ingestUrl: 'http://obs.test/v1/ingest',
+      writeKey: 'ok_write_test_secret',
+      service: 'demo',
+      env: 'test',
+      flushIntervalMs: 0,
+      fetch: captureFetch,
+      sampleRate: 0,
+      routes: { '/webhooks': { sampleRate: 1 } },
+    });
+    const middleware = expressMiddleware(client);
+
+    function noopNext(): void {
+      return;
+    }
+
+    const webhookReq = createReq();
+    webhookReq.route = { path: '/webhooks' };
+    webhookReq.originalUrl = '/webhooks';
+    webhookReq.url = '/webhooks';
+    const webhookRes = createRes();
+    middleware(webhookReq, webhookRes, noopNext);
+    webhookRes.statusCode = 200;
+    webhookRes.emit('finish');
+    await waitForCapture();
+    await client.flush();
+    expect(bodies).toHaveLength(1);
+    expect(bodies[0]?.requests[0]?.routePattern).toBe('/webhooks');
+
+    const ordersReq = createReq();
+    const ordersRes = createRes();
+    middleware(ordersReq, ordersRes, noopNext);
+    ordersRes.statusCode = 200;
+    ordersRes.emit('finish');
+    await waitForCapture();
+    await client.flush();
+    expect(bodies).toHaveLength(1);
     client.close();
   });
 });
@@ -319,6 +502,7 @@ describe('expressMiddleware fallbacks', () => {
     middleware(req, res, noopNext);
     res.send('plain');
     res.emit('finish');
+    await waitForCapture();
     await client.flush();
 
     const request = bodies[0]?.requests[0];
@@ -361,6 +545,7 @@ describe('expressMiddleware fallbacks', () => {
 
     middleware(req, res, noopNext);
     res.emit('finish');
+    await waitForCapture();
     await client.flush();
 
     expect(bodies[0]?.requests[0]?.path).toBe('/');
@@ -396,6 +581,7 @@ describe('expressMiddleware fallbacks', () => {
     expect(() => {
       res.emit('finish');
     }).not.toThrow();
+    await waitForCapture();
     client.close();
   });
 });

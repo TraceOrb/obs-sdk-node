@@ -2,6 +2,7 @@ import { MAX_TAGS_PER_REQUEST } from './config';
 import type { ObsClient } from './client';
 import type { RequestStore } from './context';
 import mergeRedactKeys from './mergeRedactKeys';
+import { shouldIncludeField, type CaptureMode } from './policy';
 import { toBodyJson, toHeadersJson } from './toJsonField';
 import type { IngestRequest } from './types';
 
@@ -73,6 +74,64 @@ function assignOptionalString({
   target[key] = value;
 }
 
+function assignCapturedBody({
+  target,
+  key,
+  mode,
+  statusCode,
+  value,
+  maxBytes,
+  extraKeys,
+}: {
+  target: IngestRequest;
+  key: 'queryJson' | 'requestBodyJson' | 'responseBodyJson';
+  mode: CaptureMode;
+  statusCode: number;
+  value: unknown;
+  maxBytes: number;
+  extraKeys: string[];
+}): void {
+  if (!shouldIncludeField({ mode, statusCode })) {
+    return;
+  }
+
+  assignOptionalString({
+    target,
+    key,
+    value: toBodyJson({ value, maxBytes, extraKeys }),
+  });
+}
+
+function assignCapturedHeaders({
+  target,
+  mode,
+  statusCode,
+  headers,
+  maxBytes,
+  extraKeys,
+}: {
+  target: IngestRequest;
+  mode: CaptureMode;
+  statusCode: number;
+  headers: Record<string, unknown>;
+  maxBytes: number;
+  extraKeys: string[];
+}): void {
+  if (!shouldIncludeField({ mode, statusCode })) {
+    return;
+  }
+
+  assignOptionalString({
+    target,
+    key: 'requestHeadersJson',
+    value: toHeadersJson({
+      headers,
+      maxBytes,
+      extraKeys,
+    }),
+  });
+}
+
 export default function ingestRequestFromCapture({
   http,
   store,
@@ -90,6 +149,7 @@ export default function ingestRequestFromCapture({
     store.redactKeys,
   ]);
   const maxBytes = client.maxBodyBytes;
+  const capture = client.captureFor(http.routePattern);
 
   const request: IngestRequest = {
     requestId: store.requestId,
@@ -120,29 +180,40 @@ export default function ingestRequestFromCapture({
     key: 'errorMessage',
     value: store.errorMessage,
   });
-  assignOptionalString({
+  assignCapturedBody({
     target: request,
     key: 'queryJson',
-    value: toBodyJson({ value: http.query, maxBytes, extraKeys }),
+    mode: capture.query,
+    statusCode: http.statusCode,
+    value: http.query,
+    maxBytes,
+    extraKeys,
   });
-  assignOptionalString({
+  assignCapturedHeaders({
     target: request,
-    key: 'requestHeadersJson',
-    value: toHeadersJson({
-      headers: http.headers,
-      maxBytes,
-      extraKeys,
-    }),
+    mode: capture.headers,
+    statusCode: http.statusCode,
+    headers: http.headers,
+    maxBytes,
+    extraKeys,
   });
-  assignOptionalString({
+  assignCapturedBody({
     target: request,
     key: 'requestBodyJson',
-    value: toBodyJson({ value: http.body, maxBytes, extraKeys }),
+    mode: capture.requestBody,
+    statusCode: http.statusCode,
+    value: http.body,
+    maxBytes,
+    extraKeys,
   });
-  assignOptionalString({
+  assignCapturedBody({
     target: request,
     key: 'responseBodyJson',
-    value: toBodyJson({ value: store.responseBody, maxBytes, extraKeys }),
+    mode: capture.responseBody,
+    statusCode: http.statusCode,
+    value: store.responseBody,
+    maxBytes,
+    extraKeys,
   });
 
   if (store.events.length > 0) {

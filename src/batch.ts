@@ -1,6 +1,7 @@
 import {
   DEFAULT_FETCH_TIMEOUT_MS,
   MAX_INGEST_BATCH,
+  MAX_IN_FLIGHT,
   RETRY_DELAYS_MS,
 } from './config';
 import type { IngestPayload, IngestRequest } from './types';
@@ -68,7 +69,7 @@ export default class IngestBatch {
 
   private timer: ReturnType<typeof setInterval> | undefined;
 
-  private flushing = false;
+  private readonly inFlight = new Set<Promise<void>>();
 
   constructor(options: IngestBatchOptions) {
     this.options = options;
@@ -90,11 +91,28 @@ export default class IngestBatch {
       return;
     }
 
-    void this.flush();
+    this.launch();
   }
 
   async flush(): Promise<void> {
-    if (this.flushing) {
+    while (true) {
+      this.launchAvailable();
+      if (this.inFlight.size === 0) {
+        return;
+      }
+
+      await Promise.race(this.inFlight);
+    }
+  }
+
+  private launchAvailable(): void {
+    while (this.inFlight.size < MAX_IN_FLIGHT && this.queue.length > 0) {
+      this.launch();
+    }
+  }
+
+  private launch(): void {
+    if (this.inFlight.size >= MAX_IN_FLIGHT) {
       return;
     }
 
@@ -103,21 +121,19 @@ export default class IngestBatch {
       return;
     }
 
-    this.flushing = true;
-    try {
-      await this.sendWithRetry(batch);
-    } finally {
-      this.flushing = false;
-    }
+    const promise: Promise<void> = this.sendWithRetry(batch).finally(() => {
+      this.inFlight.delete(promise);
+    });
+    this.inFlight.add(promise);
   }
 
   close(): void {
-    if (this.timer === undefined) {
-      return;
+    if (this.timer !== undefined) {
+      clearInterval(this.timer);
+      this.timer = undefined;
     }
 
-    clearInterval(this.timer);
-    this.timer = undefined;
+    void this.flush();
   }
 
   private takeBatch(): IngestRequest[] {

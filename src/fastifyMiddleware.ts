@@ -133,56 +133,62 @@ export default function fastifyMiddleware(
       return;
     }
 
-    try {
-      let extraTags: Record<string, string> | undefined;
-      let userId: string | undefined;
-      let optionRedactKeys: string[] | undefined;
-      let resolvedRedactKeys: string[] | undefined;
-      if (options !== undefined && options.resolveTags !== undefined) {
-        extraTags = options.resolveTags(request);
-      }
-      if (options !== undefined && options.resolveUserId !== undefined) {
-        userId = options.resolveUserId(request);
-      }
-      if (options !== undefined) {
-        optionRedactKeys = options.redactKeys;
-      }
-      if (options !== undefined && options.resolveRedactKeys !== undefined) {
-        resolvedRedactKeys = options.resolveRedactKeys(request);
-      }
-
-      let ip: string | undefined;
-      if (typeof request.ip === 'string' && request.ip !== '') {
-        ip = request.ip;
-      }
-
-      const captured = ingestRequestFromCapture({
-        http: {
-          method: request.method,
-          path: request.url,
-          routePattern: resolveRoutePattern(request),
-          statusCode: reply.statusCode,
-          query: request.query,
-          headers: { ...request.headers },
-          body: request.body,
-          ip,
-          userAgent: resolveUserAgent(request),
-          extraTags,
-          extraRedactKeys: mergeRedactKeys([
-            optionRedactKeys,
-            resolvedRedactKeys,
-          ]),
-          userId,
-        },
-        store,
-        client,
-      });
-      client.enqueue(captured);
-    } catch {
-      done();
-      return;
-    }
-
     done();
+    setImmediate(() => {
+      try {
+        const routePattern = resolveRoutePattern(request);
+        const statusCode = reply.statusCode;
+        if (!client.shouldEnqueue(routePattern, statusCode)) {
+          return;
+        }
+
+        let extraTags: Record<string, string> | undefined;
+        let userId: string | undefined;
+        let optionRedactKeys: string[] | undefined;
+        let resolvedRedactKeys: string[] | undefined;
+        if (options !== undefined && options.resolveTags !== undefined) {
+          extraTags = options.resolveTags(request);
+        }
+        if (options !== undefined && options.resolveUserId !== undefined) {
+          userId = options.resolveUserId(request);
+        }
+        if (options !== undefined) {
+          optionRedactKeys = options.redactKeys;
+        }
+        if (options !== undefined && options.resolveRedactKeys !== undefined) {
+          resolvedRedactKeys = options.resolveRedactKeys(request);
+        }
+
+        let ip: string | undefined;
+        if (typeof request.ip === 'string' && request.ip !== '') {
+          ip = request.ip;
+        }
+
+        const captured = ingestRequestFromCapture({
+          http: {
+            method: request.method,
+            path: request.url,
+            routePattern,
+            statusCode,
+            query: request.query,
+            headers: { ...request.headers },
+            body: request.body,
+            ip,
+            userAgent: resolveUserAgent(request),
+            extraTags,
+            extraRedactKeys: mergeRedactKeys([
+              optionRedactKeys,
+              resolvedRedactKeys,
+            ]),
+            userId,
+          },
+          store,
+          client,
+        });
+        client.enqueue(captured);
+      } catch {
+        return;
+      }
+    });
   });
 }

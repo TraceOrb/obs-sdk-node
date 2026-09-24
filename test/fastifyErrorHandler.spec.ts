@@ -4,6 +4,7 @@ import createClient from '../src/client';
 import fastifyErrorHandler from '../src/fastifyErrorHandler';
 import fastifyMiddleware from '../src/fastifyMiddleware';
 import type { IngestRequest } from '../src/types';
+import waitForCapture from './waitForCapture';
 
 type FakeRequest = {
   url: string;
@@ -171,7 +172,7 @@ describe('fastifyErrorHandler', () => {
     client.close();
   });
 
-  test('with middleware store records errorMessage and unhandled.error step', () => {
+  test('with middleware store records errorMessage and unhandled.error step', async () => {
     const enqueued: IngestRequest[] = [];
     const client = createTestClient();
     const originalEnqueue = client.enqueue;
@@ -189,6 +190,7 @@ describe('fastifyErrorHandler', () => {
     const result = fireOnError(app, request, err);
     expect(result.doneCalls).toBe(1);
     fireOnResponse(app, request, 500);
+    await waitForCapture();
     expect(enqueued[0]?.errorMessage).toBe('timeout');
     expect(enqueued[0]?.events?.[0]?.name).toBe('unhandled.error');
     expect(enqueued[0]?.events?.[0]?.level).toBe('error');
@@ -196,7 +198,7 @@ describe('fastifyErrorHandler', () => {
     client.close();
   });
 
-  test('does not overwrite setErrorMessage', () => {
+  test('does not overwrite setErrorMessage', async () => {
     const enqueued: IngestRequest[] = [];
     const client = createTestClient();
     const originalEnqueue = client.enqueue;
@@ -213,6 +215,7 @@ describe('fastifyErrorHandler', () => {
     const err = new Error('other');
     fireOnError(app, request, err);
     fireOnResponse(app, request, 500);
+    await waitForCapture();
     expect(enqueued[0]?.errorMessage).toBe('from-app');
     expect(enqueued[0]?.events?.[0]?.name).toBe('unhandled.error');
     client.close();

@@ -19,6 +19,13 @@ import {
   step as contextStep,
 } from './context';
 import mergeRedactKeys from './mergeRedactKeys';
+import {
+  parseClientPolicy,
+  policyForRoute,
+  shouldSample,
+  type CaptureConfig,
+  type RoutePolicyInput,
+} from './policy';
 import type { IngestRequest, StepOptions } from './types';
 
 export type CreateClientOptions = {
@@ -34,6 +41,9 @@ export type CreateClientOptions = {
   fetch?: FetchLike;
   onDrop?: (reason: DropReason) => void;
   redactKeys?: string[];
+  sampleRate?: number;
+  capture?: Partial<CaptureConfig>;
+  routes?: Record<string, RoutePolicyInput>;
 };
 
 export type ObsClient = {
@@ -53,6 +63,8 @@ export type ObsClient = {
   enqueue: (request: IngestRequest) => void;
   flush: () => Promise<void>;
   close: () => void;
+  shouldEnqueue: (routePattern: string, statusCode: number) => boolean;
+  captureFor: (routePattern: string) => CaptureConfig;
 };
 
 function resolveMaxQueue(value: number | undefined): number {
@@ -116,6 +128,11 @@ function resolveOnDrop(
 }
 
 export default function createClient(options: CreateClientOptions): ObsClient {
+  const policy = parseClientPolicy({
+    sampleRate: options.sampleRate,
+    capture: options.capture,
+    routes: options.routes,
+  });
   const maxQueue = resolveMaxQueue(options.maxQueue);
   const batch = new IngestBatch({
     ingestUrl: options.ingestUrl,
@@ -147,6 +164,17 @@ export default function createClient(options: CreateClientOptions): ObsClient {
     },
     close() {
       batch.close();
+    },
+    shouldEnqueue(routePattern: string, statusCode: number) {
+      const routePolicy = policyForRoute(policy, routePattern);
+      return shouldSample({
+        sampleRate: routePolicy.sampleRate,
+        statusCode,
+        random: Math.random(),
+      });
+    },
+    captureFor(routePattern: string) {
+      return policyForRoute(policy, routePattern).capture;
     },
   };
 }

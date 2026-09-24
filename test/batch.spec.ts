@@ -225,6 +225,35 @@ describe('IngestBatch', () => {
     expect(calls).toBe(0);
   });
 
+  test('second batch posts while the first is in flight', async () => {
+    let releaseFirst!: () => void;
+    const firstGate = new Promise<void>(resolve => {
+      releaseFirst = resolve;
+    });
+    const started: number[] = [];
+    async function gatedFetch(): Promise<{ status: number }> {
+      const n = started.length + 1;
+      started.push(n);
+      if (n === 1) {
+        await firstGate;
+      }
+      return { status: 202 };
+    }
+
+    const batch = createBatch({
+      fetch: gatedFetch,
+      maxQueue: 8,
+      flushSize: 1,
+    });
+    batch.enqueue(makeRequest('/a'));
+    await Promise.resolve();
+    batch.enqueue(makeRequest('/b'));
+    await Promise.resolve();
+    expect(started).toEqual([1, 2]);
+    releaseFirst();
+    await batch.flush();
+  });
+
   test('close is safe before a timer exists', () => {
     async function okFetch(): Promise<{ status: number }> {
       return { status: 202 };
@@ -235,6 +264,25 @@ describe('IngestBatch', () => {
       batch.close();
       batch.close();
     }).not.toThrow();
+  });
+
+  test('close starts drain of queued requests', async () => {
+    const bodies: IngestPayload[] = [];
+    async function captureFetch(
+      _input: string,
+      init: { body: string },
+    ): Promise<{ status: number }> {
+      bodies.push(JSON.parse(init.body) as IngestPayload);
+      return { status: 202 };
+    }
+
+    const batch = createBatch({ fetch: captureFetch, flushSize: 100 });
+    batch.enqueue(makeRequest('/drain-on-close'));
+    batch.close();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(bodies).toHaveLength(1);
+    expect(bodies[0]?.requests[0]?.path).toBe('/drain-on-close');
   });
 
   test('defaultFlushSize never exceeds the ingest batch cap', () => {

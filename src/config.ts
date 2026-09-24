@@ -8,6 +8,8 @@ export const DEFAULT_FETCH_TIMEOUT_MS = 10_000;
 export const RETRY_DELAYS_MS = [200, 800] as const;
 export const REDACTED = '[redacted]';
 export const MAX_EXTRA_REDACT_KEYS = 32;
+export const DEFAULT_SAMPLE_RATE = 1;
+export const MAX_IN_FLIGHT = 2;
 
 const SENSITIVE_KEYS: Record<string, true> = {
   authorization: true,

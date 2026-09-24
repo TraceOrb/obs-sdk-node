@@ -9,6 +9,7 @@ export type {
 } from './fastifyMiddleware';
 export { default as expressErrorHandler } from './expressErrorHandler';
 export { default as fastifyErrorHandler } from './fastifyErrorHandler';
+export type { CaptureConfig, CaptureMode } from './policy';
 export type {
   EventLevel,
   IngestEvent,

@@ -7,6 +7,7 @@ import createClient from '../src/client';
 import expressErrorHandler from '../src/expressErrorHandler';
 import expressMiddleware from '../src/expressMiddleware';
 import type { IngestRequest } from '../src/types';
+import waitForCapture from './waitForCapture';
 
 function createRes(): Response {
   const emitter = new EventEmitter();
@@ -74,7 +75,7 @@ describe('expressErrorHandler', () => {
     client.close();
   });
 
-  test('with middleware store records errorMessage and unhandled.error step', () => {
+  test('with middleware store records errorMessage and unhandled.error step', async () => {
     const enqueued: IngestRequest[] = [];
     const client = createTestClient();
     const originalEnqueue = client.enqueue;
@@ -95,6 +96,7 @@ describe('expressErrorHandler', () => {
     });
     res.statusCode = 500;
     res.emit('finish');
+    await waitForCapture();
     expect(enqueued[0]?.errorMessage).toBe('timeout');
     expect(enqueued[0]?.events?.[0]?.name).toBe('unhandled.error');
     expect(enqueued[0]?.events?.[0]?.level).toBe('error');
@@ -102,7 +104,7 @@ describe('expressErrorHandler', () => {
     client.close();
   });
 
-  test('does not overwrite setErrorMessage', () => {
+  test('does not overwrite setErrorMessage', async () => {
     const enqueued: IngestRequest[] = [];
     const client = createTestClient();
     const originalEnqueue = client.enqueue;
@@ -123,6 +125,7 @@ describe('expressErrorHandler', () => {
     });
     res.statusCode = 500;
     res.emit('finish');
+    await waitForCapture();
     expect(enqueued[0]?.errorMessage).toBe('from-app');
     expect(enqueued[0]?.events?.[0]?.name).toBe('unhandled.error');
     client.close();

@@ -86,6 +86,49 @@ fastifyMiddleware(app, obs, {
 });
 ```
 
+## Sample and capture (optional)
+
+Omit `sampleRate` and `capture` to keep today's defaults (100% of requests; headers, query, and both bodies always). Status 4xx/5xx always ingest. `skip` skips the store entirely; `sampleRate: 0` still keeps errors.
+
+Sample 10% of successful traffic:
+
+```js
+const obs = createClient({
+  ingestUrl,
+  writeKey,
+  service: 'orders-api',
+  env: process.env.NODE_ENV ?? 'production',
+  sampleRate: 0.1,
+});
+```
+
+Capture request and response bodies only on errors:
+
+```js
+const obs = createClient({
+  ingestUrl,
+  writeKey,
+  service: 'orders-api',
+  env: process.env.NODE_ENV ?? 'production',
+  capture: {
+    requestBody: 'errors',
+    responseBody: 'errors',
+  },
+});
+```
+
+Skip health and metrics on Express (no store, no ingest):
+
+```js
+app.use(
+  expressMiddleware(obs, {
+    skip(req) {
+      return req.path === '/health' || req.path === '/metrics';
+    },
+  }),
+);
+```
+
 ## Capture the request error (optional)
 
 The middleware does not record thrown exceptions. Mount the error handler **after your routes**. The 500 then gets `errorMessage` and an `unhandled.error` step on the timeline. Skip this and 4xx/5xx still ingest; you just will not get the exception unless the app already called `obs.setErrorMessage`.
