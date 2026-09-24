@@ -92,29 +92,39 @@ function parseCaptureConfig(
   };
 }
 
+const CAPTURE_FIELDS: readonly (keyof CaptureConfig)[] = [
+  'headers',
+  'query',
+  'requestBody',
+  'responseBody',
+];
+
 function parseRouteCapture(
   partial: Partial<CaptureConfig> | undefined,
 ): Partial<CaptureConfig> | undefined {
   if (partial === undefined) {
     return undefined;
   }
-  return {
-    headers: optionalParseCaptureMode(partial.headers),
-    query: optionalParseCaptureMode(partial.query),
-    requestBody: optionalParseCaptureMode(partial.requestBody),
-    responseBody: optionalParseCaptureMode(partial.responseBody),
-  };
+  const capture: Partial<CaptureConfig> = {};
+  for (const field of CAPTURE_FIELDS) {
+    const mode = optionalParseCaptureMode(partial[field]);
+    if (mode !== undefined) {
+      capture[field] = mode;
+    }
+  }
+  return capture;
 }
 
 function parseRoutePolicyInput(input: RoutePolicyInput): RoutePolicyInput {
-  const capture = parseRouteCapture(input.capture);
-  if (input.sampleRate !== undefined && (input.sampleRate < 0 || input.sampleRate > 1)) {
-    throw new Error('sampleRate must be between 0 and 1');
+  const parsed: RoutePolicyInput = {};
+  if (input.sampleRate !== undefined) {
+    parsed.sampleRate = parseSampleRate(input.sampleRate);
   }
-  return {
-    sampleRate: input.sampleRate,
-    capture,
-  };
+  const capture = parseRouteCapture(input.capture);
+  if (capture !== undefined) {
+    parsed.capture = capture;
+  }
+  return parsed;
 }
 
 export function parseClientPolicy(input: {
@@ -134,7 +144,11 @@ export function parseClientPolicy(input: {
       throw new Error('routes must be a plain object');
     }
     for (const key of Object.keys(input.routes)) {
-      routes[key] = parseRoutePolicyInput(input.routes[key]);
+      const routeInput = input.routes[key];
+      if (routeInput === undefined) {
+        throw new Error('routes must be a plain object');
+      }
+      routes[key] = parseRoutePolicyInput(routeInput);
     }
   }
   return { sampleRate, capture, routes };

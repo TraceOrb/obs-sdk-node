@@ -127,12 +127,30 @@ function resolveOnDrop(
   return value;
 }
 
+function policyInputFromOptions(options: CreateClientOptions): {
+  sampleRate?: number;
+  capture?: Partial<CaptureConfig>;
+  routes?: Record<string, RoutePolicyInput>;
+} {
+  const input: {
+    sampleRate?: number;
+    capture?: Partial<CaptureConfig>;
+    routes?: Record<string, RoutePolicyInput>;
+  } = {};
+  if (options.sampleRate !== undefined) {
+    input.sampleRate = options.sampleRate;
+  }
+  if (options.capture !== undefined) {
+    input.capture = options.capture;
+  }
+  if (options.routes !== undefined) {
+    input.routes = options.routes;
+  }
+  return input;
+}
+
 export default function createClient(options: CreateClientOptions): ObsClient {
-  const policy = parseClientPolicy({
-    sampleRate: options.sampleRate,
-    capture: options.capture,
-    routes: options.routes,
-  });
+  const policy = parseClientPolicy(policyInputFromOptions(options));
   const maxQueue = resolveMaxQueue(options.maxQueue);
   const batch = new IngestBatch({
     ingestUrl: options.ingestUrl,
